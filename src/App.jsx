@@ -237,6 +237,13 @@ export default function App() {
     { id: "ORD-9876", userId: 1, userName: "Alex Mercer",    productName: "Azurea Classic Trench Coat",   productId: 1, size: "M",  color: "Blue",  quantity: 1, totalAmount: 99.99,  status: "Paid",      date: "2026-05-25T14:30:00Z" },
   ]);
 
+  // DB Mock States: Centralized Transactions
+  const [transactions, setTransactions] = useState([
+    { id: "TXN-5001", orderId: "ORD-9876", amount: 99.99, status: "Success", date: "2026-05-25T14:30:00Z" },
+    { id: "TXN-5002", orderId: "ORD-1012", amount: 99.99, status: "Success", date: "2026-05-09T14:30:00Z" },
+    { id: "TXN-5003", orderId: "ORD-1005", amount: 39.99, status: "Success", date: "2026-03-03T15:00:00Z" }
+  ]);
+
   // Temporary Inputs
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
