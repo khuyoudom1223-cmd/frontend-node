@@ -436,9 +436,16 @@ export default function App() {
 
     triggerNotification('Initiating order and generating KHQR code...', 'info');
 
+    const authHeaders = {};
+    try {
+      if (currentUser?.token) {
+        authHeaders.Authorization = `Bearer ${currentUser.token}`;
+      }
+    } catch (e) {}
+
     fetch(`${API_BASE_URL}/api/checkout/generate-qr`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify(requestBody)
     })
       .then(r => {
@@ -478,15 +485,32 @@ export default function App() {
         // 2. Set KHQR States
         setKhqrPayload({
           qr_string: data.qr_string,
-          qr_image_url: data.qr_image
+          qr_image_url: data.qr_image,
+          payment_reference: data.payment_reference
         });
         setKhqrOrderId(createdOrderDisplayId);
         setShowKHQRModal(true);
         triggerNotification('QR generated successfully! Scan with Bakong to pay', 'info');
 
+        // Capture cart item data before interval (closure safety)
+        const cartProductId = cart[0].id;
+        const cartProductQty = cart[0].quantity;
+
         // 3. Start payment status polling every 3-5 seconds (set to 4s)
         const pid = setInterval(() => {
-          fetch(`${API_BASE_URL}/api/payments/status/${data.order_id}`)
+          const pollHeaders = {};
+          try {
+            if (currentUser?.token) {
+              pollHeaders.Authorization = `Bearer ${currentUser.token}`;
+            }
+            if (data.payment_reference) {
+              pollHeaders['x-payment-reference'] = data.payment_reference;
+            }
+          } catch (e) {}
+
+          fetch(`${API_BASE_URL}/api/payments/status/${data.order_id}`, {
+            headers: pollHeaders
+          })
             .then(r => r.json())
             .then(statusData => {
               if (statusData && statusData.paid) {
@@ -496,7 +520,7 @@ export default function App() {
                 
                 // - Reduce product stock locally in frontend mock state
                 setProducts(prevProds => prevProds.map(p => 
-                  p.id === cart[0].id ? { ...p, stock: Math.max(0, p.stock - cart[0].quantity) } : p
+                  p.id === cartProductId ? { ...p, stock: Math.max(0, p.stock - cartProductQty) } : p
                 ));
 
                 triggerNotification('Order Completed Successfully! Payment received.', 'success');
