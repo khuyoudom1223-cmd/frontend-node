@@ -5,7 +5,7 @@ import {
   ArrowRightLeft, AlertCircle, ShoppingCart, RefreshCw,
   LogOut, PlusCircle, Settings, Edit3, Check, XCircle, Eye, EyeOff,
   TrendingUp, Package, Users, DollarSign, BarChart2, Menu, Globe,
-  ChevronDown, MapPin, Building2, Home, Sparkles,
+  ChevronDown, MapPin, Building2, Home, Sparkles, Loader2,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import {
@@ -519,6 +519,7 @@ export default function App() {
   const [checkoutVillageCode, setCheckoutVillageCode] = useState('');
   const [checkoutHouseNumber, setCheckoutHouseNumber] = useState('');
   const [checkoutNote, setCheckoutNote] = useState('');
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
   const provinceData = useMemo(() => getProvinces(), []);
   const selectedProvinceData = useMemo(
     () => provinceData.find(province => province.code === checkoutProvinceCode) || null,
@@ -1148,14 +1149,16 @@ export default function App() {
       return;
     }
 
-    if (isRegisterMode) {
-      const normalizedName = (authName || '').trim();
-      if (!normalizedName) {
-        triggerNotification("Name is required", "warning");
-        return;
-      }
+    setIsAuthLoading(true);
+    try {
+      if (isRegisterMode) {
+        const normalizedName = (authName || '').trim();
+        if (!normalizedName) {
+          triggerNotification("Name is required", "warning");
+          setIsAuthLoading(false);
+          return;
+        }
 
-      try {
         const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1170,6 +1173,7 @@ export default function App() {
         const payload = await response.json();
         if (!response.ok || !payload?.success) {
           triggerNotification(payload?.message || 'Registration failed', 'error');
+          setIsAuthLoading(false);
           return;
         }
 
@@ -1203,11 +1207,7 @@ export default function App() {
         setIsRegisterMode(false);
         setSelectedProduct(null);
         setCurrentTab('home');
-      } catch (err) {
-        triggerNotification('Unable to connect to authentication server', 'error');
-      }
-    } else {
-      try {
+      } else {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1220,6 +1220,7 @@ export default function App() {
         const payload = await response.json();
         if (!response.ok || !payload?.success) {
           triggerNotification(payload?.message || 'Invalid email or password', 'error');
+          setIsAuthLoading(false);
           return;
         }
 
@@ -1251,9 +1252,11 @@ export default function App() {
         setAuthPassword('');
         setSelectedProduct(null);
         setCurrentTab('home');
-      } catch (err) {
-        triggerNotification('Unable to connect to authentication server', 'error');
       }
+    } catch (err) {
+      triggerNotification('Unable to connect to authentication server', 'error');
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -3193,8 +3196,19 @@ export default function App() {
                   </div>
                 </div>
                 
-                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg transition cursor-pointer mt-2">
-                  {isRegisterMode ? 'Register Account' : 'Sign In'}
+                <button 
+                  type="submit" 
+                  disabled={isAuthLoading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg transition cursor-pointer mt-2 disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isAuthLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>{isRegisterMode ? 'Registering...' : 'Signing In...'}</span>
+                    </>
+                  ) : (
+                    <span>{isRegisterMode ? 'Register Account' : 'Sign In'}</span>
+                  )}
                 </button>
               </form>
 
