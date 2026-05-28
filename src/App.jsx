@@ -54,21 +54,29 @@ function SearchableCombobox({
   icon: Icon,
   required = false
 }) {
-  const [query, setQuery] = useState(value || '');
+  const selectedOption = useMemo(() => {
+    return options.find(opt => opt.value === value) || null;
+  }, [options, value]);
+
+  const [query, setQuery] = useState(() => {
+    return selectedOption ? selectedOption.label : (value || '');
+  });
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    setQuery(value || '');
-  }, [value]);
+    setQuery(selectedOption ? selectedOption.label : (value || ''));
+  }, [selectedOption, value]);
 
   const filteredOptions = useMemo(() => {
     const term = query.trim().toLowerCase();
-    if (!term) return options;
+    if (!term || (selectedOption && term === selectedOption.label.trim().toLowerCase())) {
+      return options;
+    }
     return options.filter(option => {
       const haystack = [option.label, option.description, option.value, option.searchText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(term);
     });
-  }, [options, query]);
+  }, [options, query, selectedOption]);
 
   return (
     <div className="relative space-y-2">
@@ -86,8 +94,19 @@ function SearchableCombobox({
             setQuery(e.target.value);
             setIsOpen(true);
           }}
-          onFocus={() => !disabled && setIsOpen(true)}
-          onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+          onFocus={(e) => {
+            if (!disabled) {
+              setIsOpen(true);
+              e.target.select();
+            }
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              setIsOpen(false);
+              const matched = options.find(opt => opt.value === value);
+              setQuery(matched ? matched.label : '');
+            }, 120);
+          }}
           placeholder={placeholder}
           disabled={disabled}
           className={`w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${Icon ? 'pl-10' : ''}`}
@@ -250,7 +269,23 @@ const HERO_SLIDES = [
 ];
 
 export default function App() {
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ecommerce-node-1-p2ro.onrender.com';
+
+  const getProductImage = (image) => {
+    if (!image) return "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600";
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      if (image.includes('/uploads/')) {
+        const parts = image.split('/uploads/');
+        return `${API_BASE_URL}/uploads/${parts[1]}`;
+      }
+      return image;
+    }
+    if (image.startsWith('/uploads/')) {
+      return `${API_BASE_URL}${image}`;
+    }
+    return `${API_BASE_URL}/uploads/${image}`;
+  };
+
 
   // Navigation & View
   const [currentTab, setCurrentTab] = useState('home'); // home, product, cart, orders, vendor, admin, profile, auth
@@ -1055,11 +1090,39 @@ export default function App() {
   };
 
   // Admin Action: Delete Product completely
-  const handleAdminDeleteProduct = (productId) => {
+  const handleAdminDeleteProduct = async (productId) => {
     const prodToDelete = products.find(p => p.id === productId);
     if (!prodToDelete) return;
-    setProducts(products.filter(p => p.id !== productId));
-    triggerNotification(`Product "${prodToDelete.name}" successfully deleted from catalog!`, "info");
+
+    const headers = {};
+    if (currentUser?.token) {
+      headers['Authorization'] = `Bearer ${currentUser.token}`;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Server returned error when deleting product');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setProducts(products.filter(p => p.id !== productId));
+        triggerNotification(`Product "${prodToDelete.name}" successfully deleted from database!`, "success");
+      } else {
+        throw new Error(data.message || 'Deletion failed');
+      }
+    } catch (apiErr) {
+      console.error(apiErr);
+      // Fallback: Delete from local state anyway if offline or local testing
+      setProducts(products.filter(p => p.id !== productId));
+      triggerNotification(`Deleted "${prodToDelete.name}" locally. Database error: ${apiErr.message}`, "warning");
+    }
   };
 
 
@@ -1738,9 +1801,21 @@ export default function App() {
                         {/* Image Frame */}
                         <div className="relative aspect-[4/5] bg-slate-100 overflow-hidden cursor-pointer" onClick={() => { setSelectedProduct(product); setCurrentTab('product'); }}>
                           <img 
-                            src={product.image} 
+                            src={getProductImage(product.image)} 
                             alt={product.name} 
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              const fallbacks = {
+                                Coats: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600",
+                                Dresses: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=600",
+                                Shirts: "https://images.unsplash.com/photo-1603252109303-2751441dd157?q=80&w=600",
+                                Jackets: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=600",
+                                Skirts: "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?q=80&w=600",
+                                Sweaters: "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=600"
+                              };
+                              e.target.src = fallbacks[product.category] || "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600";
+                            }}
                           />
                           
                           {/* Discount Badge */}
@@ -1827,9 +1902,21 @@ export default function App() {
                         className="flex sm:hidden flex-col relative aspect-[4/5] bg-slate-100 rounded-xl overflow-hidden cursor-pointer shadow-sm active:scale-95 transition-all duration-300 border border-slate-100/50 animate-fade-in"
                       >
                         <img 
-                          src={product.image} 
+                          src={getProductImage(product.image)} 
                           alt={product.name} 
                           className="w-full h-full object-cover" 
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            const fallbacks = {
+                              Coats: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600",
+                              Dresses: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=600",
+                              Shirts: "https://images.unsplash.com/photo-1603252109303-2751441dd157?q=80&w=600",
+                              Jackets: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=600",
+                              Skirts: "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?q=80&w=600",
+                              Sweaters: "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=600"
+                            };
+                            e.target.src = fallbacks[product.category] || "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600";
+                          }}
                         />
                         {/* Elegant bottom gradient */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
@@ -1901,15 +1988,43 @@ export default function App() {
               <div className="space-y-4">
                 <div className="aspect-[4/5] bg-slate-50 rounded-2xl overflow-hidden border border-slate-100">
                   <img 
-                    src={selectedProduct.image} 
+                    src={getProductImage(selectedProduct.image)} 
                     alt={selectedProduct.name} 
                     className="w-full h-full object-cover" 
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      const fallbacks = {
+                        Coats: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600",
+                        Dresses: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=600",
+                        Shirts: "https://images.unsplash.com/photo-1603252109303-2751441dd157?q=80&w=600",
+                        Jackets: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=600",
+                        Skirts: "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?q=80&w=600",
+                        Sweaters: "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=600"
+                      };
+                      e.target.src = fallbacks[selectedProduct.category] || "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600";
+                    }}
                   />
                 </div>
                 <div className="grid grid-cols-4 gap-4">
                   {/* Gallery Sub-items */}
                   <div className="aspect-square bg-slate-50 rounded-xl overflow-hidden border-2 border-blue-500 cursor-pointer">
-                    <img src={selectedProduct.image} alt="main view" className="w-full h-full object-cover" />
+                    <img 
+                      src={getProductImage(selectedProduct.image)} 
+                      alt="main view" 
+                      className="w-full h-full object-cover" 
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        const fallbacks = {
+                          Coats: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600",
+                          Dresses: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=600",
+                          Shirts: "https://images.unsplash.com/photo-1603252109303-2751441dd157?q=80&w=600",
+                          Jackets: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=600",
+                          Skirts: "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?q=80&w=600",
+                          Sweaters: "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=600"
+                        };
+                        e.target.src = fallbacks[selectedProduct.category] || "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600";
+                      }}
+                    />
                   </div>
                   <div className="aspect-square bg-slate-100 rounded-xl overflow-hidden cursor-not-allowed opacity-50 flex items-center justify-center text-[10px] text-slate-400 font-bold">
                     Front Side
@@ -2107,7 +2222,7 @@ export default function App() {
                       <div className="flex items-center gap-4">
                         {/* Thumbnail */}
                         <div className="h-20 w-16 bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex-shrink-0">
-                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          <img src={getProductImage(item.image)} alt={item.name} className="w-full h-full object-cover" />
                         </div>
                         
                         <div className="space-y-1">
@@ -2253,7 +2368,7 @@ export default function App() {
                       <div className="md:col-span-2 flex items-center gap-4">
                         <div className="h-16 w-12 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
                           {/* Fetch product image */}
-                          <img src={products.find(p => p.id === order.productId)?.image || "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=100"} alt="apparel thumbnail" className="w-full h-full object-cover" />
+                          <img src={getProductImage(products.find(p => p.id === order.productId)?.image)} alt="apparel thumbnail" className="w-full h-full object-cover" />
                         </div>
                         <div className="space-y-1">
                           <h4 className="font-bold text-slate-800">{order.productName}</h4>
@@ -2845,7 +2960,7 @@ export default function App() {
                     <div key={p.id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 gap-4">
                       <div className="flex items-center gap-3">
                         <div className="h-16 w-12 bg-slate-200 rounded overflow-hidden flex-shrink-0">
-                          <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                          <img src={getProductImage(p.image)} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <div className="space-y-0.5">
                           <strong className="text-sm text-slate-800 block line-clamp-1">{p.name}</strong>
@@ -3322,7 +3437,7 @@ export default function App() {
                 {wishlist.map(item => (
                   <div key={item.id} onClick={() => { setSelectedProduct(item); setCurrentTab('product'); setShowWishlistModal(false); }} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:shadow-sm transition">
                     <div className="flex items-center gap-3">
-                      <img src={item.image} alt={item.name} className="w-12 h-12 object-cover rounded" />
+                      <img src={getProductImage(item.image)} alt={item.name} className="w-12 h-12 object-cover rounded" />
                       <div>
                         <div className="font-semibold text-sm">{item.name}</div>
                         <div className="text-xs text-slate-400">{item.category}</div>
