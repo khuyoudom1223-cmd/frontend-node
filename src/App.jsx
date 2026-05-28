@@ -1411,7 +1411,9 @@ export default function App() {
                     <button onClick={() => setCurrentTab('orders')} className={`cursor-pointer hover:text-blue-600 ${currentTab === 'orders' ? 'text-blue-600 font-semibold' : ''}`}>{t('orders')}</button>
                   </>
                 )}
-                {/* admin/dashboard moved to mobile menu */}
+                {currentUser?.role === 'admin' && (
+                  <button onClick={() => setCurrentTab('admin')} className={`cursor-pointer hover:text-blue-600 ${currentTab === 'admin' ? 'text-blue-600 font-semibold' : ''}`}>{t('adminPanel')}</button>
+                )}
               </nav>
             </div>
 
